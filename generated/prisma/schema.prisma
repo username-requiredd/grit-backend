@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Add your models here
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
+  workspaceMembers WorkspaceMember[]
+  createdBoards    Board[]
+  cards            Card[]
+  comments         Comment[]
+  activities       Activity[]
+
+  @@map("users")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members WorkspaceMember[]
+  boards  Board[]
+
+  activities Activity[] // <-- FIX 1: Added inverse relation for Activity
+
+  @@map("Workspace")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("WorkspaceMember")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Board {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  columns   Column[]
+  creatorId String
+  creator   User      @relation(fields: [creatorId], references: [id])
+
+  @@map("Board")
+}
+
+model Column {
+  id        String   @id @default(cuid())
+  boardId   String
+  title     String
+  position  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards Card[]
+
+  @@index([boardId, position])
+  @@map("Column")
+}
+
+model Card {
+  id          String   @id @default(cuid())
+  columnId    String
+  title       String
+  description String?
+  position    Int
+  creatorId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  column     Column     @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  creator    User       @relation(fields: [creatorId], references: [id])
+  comments   Comment[]
+  activities Activity[] // Inverse relation is now established in the Activity model
+
+  @@index([columnId, position])
+  @@map("Card")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  cardId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("Comment")
+}
+
+model Activity {
+  id String @id @default(cuid())
+
+  // FIX 2a: Added fields to link back to the Card model
+  cardId String?
+  card   Card?   @relation(fields: [cardId], references: [id])
+
+  // Original fields
+  workspaceId String
+  userId      String
+  message     String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@map("Activity")
+}
