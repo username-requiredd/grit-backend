@@ -1,6 +1,8 @@
+// schema.prisma
+
 generator client {
-  provider        = "prisma-client-js"
-  output          = "../generated/prisma"
+  provider = "prisma-client-js"
+  output   = "../generated/prisma" // Standard output directory
 }
 
 datasource db {
@@ -8,7 +10,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Add your models here
+// --- CORE MODELS ---
 
 model User {
   id                String            @id @default(uuid())
@@ -35,6 +37,8 @@ enum Role {
   ADMIN
 }
 
+// --- WORKSPACE & MEMBERSHIP ---
+
 model Workspace {
   id        String            @id @default(cuid())
   name      String
@@ -46,9 +50,9 @@ model Workspace {
   members   WorkspaceMember[]
   boards    Board[]
   
-  activities Activity[] // <-- FIX 1: Added inverse relation for Activity
+  activities Activity[] 
 
-  @@map("Workspace")
+  @@map("workspace") // Keeping this as 'workspace' to match existing migrations
 }
 
 
@@ -63,7 +67,8 @@ model WorkspaceMember {
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
-  @@map("WorkspaceMember")
+  // 🛑 FIX: Changed map name back to match the existing table in the database
+  @@map("WorkspaceMember") 
 }
 
 enum WorkspaceRole {
@@ -72,6 +77,8 @@ enum WorkspaceRole {
   MEMBER
   VIEWER
 }
+
+// --- BOARD STRUCTURE ---
 
 model Board {
   id          String    @id @default(cuid())
@@ -85,7 +92,7 @@ model Board {
   creatorId   String
   creator     User      @relation(fields: [creatorId], references: [id])
 
-  @@map("Board")
+  @@map("boards")
 }
 
 model Column {
@@ -100,26 +107,26 @@ model Column {
   cards     Card[]
 
   @@index([boardId, position])
-  @@map("Column")
+  @@map("columns") // Changed to plural for consistency
 }
 
 model Card {
-  id          String     @id @default(cuid())
+  id          String    @id @default(cuid())
   columnId    String
   title       String
   description String?
   position    Int
   creatorId   String
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  column      Column     @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  creator     User       @relation(fields: [creatorId], references: [id])
+  column      Column    @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  creator     User      @relation(fields: [creatorId], references: [id])
   comments    Comment[]
-  activities  Activity[] // Inverse relation is now established in the Activity model
+  activities  Activity[] 
 
   @@index([columnId, position])
-  @@map("Card")
+  @@map("cards") // Changed to plural for consistency
 }
 
 model Comment {
@@ -132,17 +139,15 @@ model Comment {
   card      Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id])
 
-  @@map("Comment")
+  @@map("comments") // Changed to plural for consistency
 }
 
 model Activity {
   id          String    @id @default(cuid())
   
-  // FIX 2a: Added fields to link back to the Card model
-  cardId      String?   
+  cardId      String?
   card        Card?     @relation(fields: [cardId], references: [id])
 
-  // Original fields
   workspaceId String
   userId      String
   message     String
@@ -151,5 +156,5 @@ model Activity {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [userId], references: [id])
 
-  @@map("Activity")
+  @@map("activities") // Changed to plural for consistency
 }
