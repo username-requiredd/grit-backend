@@ -93,4 +93,3 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         return user;
     }
 }
-// Note: JwtStrategy and AuthModule content are in separate files and should remain unchanged.

@@ -175,49 +175,68 @@ export class BoardGateway
 
   // HANDLEMOVECARD: Protected by Guard
   @UseGuards(JwtAuthGuard) // <-- GUARD PROTECTS THIS EVENT
-  @SubscribeMessage('moveCard')
-  async handleMoveCard(
-    @MessageBody() payload: MoveCardPayload,
-    @ConnectedSocket() client: Socket,
-  ) {
-    const { cardId, toColumnId, toPosition, boardId } = payload;
-    // User is guaranteed to exist by the guard
-    const userId = client.data.user.id; 
+// src/board/board.gateway.ts
 
-    // Validate that user has permission to modify this board
-    const membership = await this.prisma.workspaceMember.findFirst({
-      where: {
-        userId,
-        workspace: { boards: { some: { id: boardId } } },
-      },
-    });
+@SubscribeMessage('moveCard')
+async handleMoveCard(
+  @ConnectedSocket() client: Socket,
+  @MessageBody() payload: { cardId: string; toColumnId: string; toPosition: number; boardId: string },
+) {
+  const { cardId, toColumnId, toPosition, boardId } = payload;
+  const userId = client.data.user.id;
 
-    if (!membership) {
-      client.emit('error', { message: 'Access denied' });
-      return;
-    }
+  // 1. Validate that user has permission to modify this board
+  const membership = await this.prisma.workspaceMember.findFirst({
+    where: {
+      userId,
+      workspace: { boards: { some: { id: boardId } } },
+    },
+  });
 
-    // Update in DB
-    await this.prisma.card.update({
+  if (!membership) {
+    // SECURITY: Reject request if user is not a member
+    client.emit('exception', { status: 'error', message: 'Access denied to board' });
+    return;
+  }
+
+  const boardRoom = `board_${boardId}`;
+
+  try {
+    // 2. Database Update
+    // NOTE: This assumes the card is being moved to a column within the same board.
+    const updatedCard = await this.prisma.card.update({
       where: { id: cardId },
       data: {
         columnId: toColumnId,
         position: toPosition,
       },
+      // Include the creator to send detailed info back
+      include: { creator: { select: { id: true, name: true } } }, 
     });
 
-    // Broadcast to everyone in the board room
-    this.server.to(`board_${boardId}`).emit('cardMoved', {
-      cardId,
-      toColumnId,
-      toPosition,
-      movedBy: userId,
-      timestamp: new Date().toISOString(),
+    // 3. Broadcast Success
+    // Send the successful update to everyone in the room
+    this.server.to(boardRoom).emit('cardMoved', {
+      ...updatedCard,
+      movedByUserId: userId, // Identify the user who initiated the move
     });
 
-    this.logger.log(`Card ${cardId} moved by ${userId}`);
+  } catch (error) {
+    // 4. Send Error ONLY to the initiating client (enabling frontend rollback)
+    console.error(`Card move failed for user ${userId}:`, error);
+
+    let errorMessage = 'Internal server error during card move.';
+    if (error.code === 'P2025') {
+        errorMessage = 'Card or target column not found. Data is missing.';
+    }
+    
+    // Emit a specific error event back to the single client for rollback
+    client.emit('moveCardError', {
+      message: errorMessage,
+      originalPayload: payload, // Send back the original payload for frontend context
+    });
   }
-
+}
   // Clean up Redis connections on module destroy
   async onModuleDestroy() {
     if (this.pubClient) {

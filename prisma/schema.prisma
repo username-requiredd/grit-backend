@@ -1,8 +1,5 @@
-// schema.prisma
-
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma" // Standard output directory
 }
 
 datasource db {
@@ -10,151 +7,160 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// --- CORE MODELS ---
-
 model User {
-  id                String            @id @default(uuid())
-  email             String            @unique
-  name              String?
-  avatarUrl         String?
-  role              Role              @default(USER)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                 String  @id @unique
+  email              String  @unique
+  name               String?
+  avatarUrl          String?
 
-  // Relations
-  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
-  workspaceMembers  WorkspaceMember[]
-  createdBoards     Board[]
-  cards             Card[]
-  comments          Comment[]
-  activities        Activity[]
-
-  @@map("users")
+  ownedWorkspaces    Workspace[]
+  memberWorkspaces   WorkspaceMember[]
+  boardsOwned        Board[]           @relation("BoardOwner")
+  cardsCreated       Card[]            @relation("CardCreator")
+  comments           Comment[]
+  cardAssignments    CardAssignee[]
 }
-
-enum Role {
-  USER
-  ADMIN
-}
-
-// --- WORKSPACE & MEMBERSHIP ---
 
 model Workspace {
-  id        String            @id @default(cuid())
-  name      String
-  ownerId   String
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id                 String   @id @default(uuid())
+  title              String
+  slug               String   @unique
+  ownerId            String
+  owner              User     @relation(fields: [ownerId], references: [id])
 
-  owner     User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
-  members   WorkspaceMember[]
-  boards    Board[]
-  
-  activities Activity[] 
+  boards             Board[]
+  members            WorkspaceMember[]
 
-  @@map("workspace") // Keeping this as 'workspace' to match existing migrations
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
-
 
 model WorkspaceMember {
-  id            String        @id @default(cuid())
-  workspaceId   String
-  userId        String
-  role          WorkspaceRole @default(MEMBER)
-  createdAt     DateTime      @default(now())
+  id                 String   @id @default(uuid())
+  userId             String
+  workspaceId        String
+  role               Role     @default(MEMBER)
 
-  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User      @relation(fields: [userId], references: [id])
+  workspace          Workspace @relation(fields: [workspaceId], references: [id])
 
-  @@unique([workspaceId, userId])
-  // 🛑 FIX: Changed map name back to match the existing table in the database
-  @@map("WorkspaceMember") 
+  @@unique([userId, workspaceId])
 }
-
-enum WorkspaceRole {
-  OWNER
-  ADMIN
-  MEMBER
-  VIEWER
-}
-
-// --- BOARD STRUCTURE ---
 
 model Board {
-  id          String    @id @default(cuid())
-  workspaceId String
-  name        String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                 String          @id @default(uuid())
+  title              String
+  slug               String?         @unique
+  description        String?
+  backgroundUrl      String?
+  archived           Boolean         @default(false)
+  visibility         BoardVisibility @default(PRIVATE)
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  columns     Column[]
-  creatorId   String
-  creator     User      @relation(fields: [creatorId], references: [id])
+  workspaceId        String
+  workspace          Workspace       @relation(fields: [workspaceId], references: [id])
 
-  @@map("boards")
+  ownerId            String
+  owner              User            @relation("BoardOwner", fields: [ownerId], references: [id])
+
+  columns            Column[]
+  labels             Label[]
+
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 }
 
 model Column {
-  id        String    @id @default(cuid())
-  boardId   String
-  title     String
-  position  Int
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                 String   @id @default(uuid())
+  boardId            String
+  title              String
+  position           Int
+  isFinal            Boolean  @default(false)
 
-  board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  cards     Card[]
+  board              Board    @relation(fields: [boardId], references: [id])
+  cards              Card[]
 
-  @@index([boardId, position])
-  @@map("columns") // Changed to plural for consistency
+  @@unique([boardId, position])
 }
 
 model Card {
-  id          String    @id @default(cuid())
-  columnId    String
-  title       String
-  description String?
-  position    Int
-  creatorId   String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                 String   @id @default(uuid())
+  columnId           String
+  title              String
+  description        String?
+  position           Int
+  dueDate            DateTime?
+  archived           Boolean  @default(false)
 
-  column      Column    @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  creator     User      @relation(fields: [creatorId], references: [id])
-  comments    Comment[]
-  activities  Activity[] 
+  column             Column   @relation(fields: [columnId], references: [id])
 
-  @@index([columnId, position])
-  @@map("cards") // Changed to plural for consistency
+  creatorId          String
+  creator            User     @relation("CardCreator", fields: [creatorId], references: [id])
+
+  labels             CardLabel[]
+  assignees          CardAssignee[]
+  comments           Comment[]
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([columnId, position])
+}
+
+model CardAssignee {
+  id                 String   @id @default(uuid())
+  cardId             String
+  userId             String
+
+  card               Card     @relation(fields: [cardId], references: [id])
+  user               User     @relation(fields: [userId], references: [id])
+
+  @@unique([cardId, userId])
+}
+
+model Label {
+  id                 String   @id @default(uuid())
+  boardId            String
+  name               String
+  color              String
+
+  board              Board    @relation(fields: [boardId], references: [id])
+  cards              CardLabel[]
+  
+  @@unique([boardId, name])
+}
+
+model CardLabel {
+  id                 String   @id @default(uuid())
+  cardId             String
+  labelId            String
+
+  card               Card     @relation(fields: [cardId], references: [id])
+  label              Label    @relation(fields: [labelId], references: [id])
+
+  @@unique([cardId, labelId])
 }
 
 model Comment {
-  id        String    @id @default(cuid())
-  cardId    String
-  userId    String
-  content   String
-  createdAt DateTime  @default(now())
+  id                 String   @id @default(uuid())
+  cardId             String
+  userId             String
+  text               String
 
-  card      Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id])
+  card               Card     @relation(fields: [cardId], references: [id])
+  user               User     @relation(fields: [userId], references: [id])
 
-  @@map("comments") // Changed to plural for consistency
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
-model Activity {
-  id          String    @id @default(cuid())
-  
-  cardId      String?
-  card        Card?     @relation(fields: [cardId], references: [id])
+enum Role {
+  ADMIN
+  MEMBER
+  GUEST
+}
 
-  workspaceId String
-  userId      String
-  message     String
-  createdAt   DateTime  @default(now())
-
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id])
-
-  @@map("activities") // Changed to plural for consistency
+enum BoardVisibility {
+  PRIVATE
+  WORKSPACE
+  PUBLIC
 }

@@ -7,7 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { BoardGateway } from './board/board.gateway';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
-
+import { BoardModule } from './board-controller/board.module';
 @Module({
   imports: [
     AuthModule,
@@ -17,8 +17,9 @@ import { APP_GUARD } from '@nestjs/core';
       ignoreEnvFile: false,
     }),
     PrismaModule,
+    BoardModule
   ],
-  controllers: [AppController],
+  controllers: [AppController,],
   providers: [
     AppService,
     BoardGateway,
